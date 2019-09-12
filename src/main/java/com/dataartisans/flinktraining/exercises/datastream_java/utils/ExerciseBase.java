@@ -26,10 +26,10 @@ public class ExerciseBase {
 	public static SourceFunction<TaxiFare> fares = null;
 	public static SourceFunction<String> strings = null;
 	public static SinkFunction out = null;
-	public static int parallelism = 4;
+	public static int parallelism = 1;
 
-	public final static String pathToRideData = "/Users/david/stuff/flink-training/trainingData/nycTaxiRides.gz";
-	public final static String pathToFareData = "/Users/david/stuff/flink-training/trainingData/nycTaxiFares.gz";
+	public final static String pathToRideData = "/home/konstantinos/Desktop/Programming/flink-training-exercises/nycTaxiRides.gz";
+	public final static String pathToFareData = "/home/konstantinos/Desktop/Programming/flink-training-exercises/nycTaxiFares.gz";
 
 	public static SourceFunction<TaxiRide> rideSourceOrTest(SourceFunction<TaxiRide> source) {
 		if (rides == null) {
