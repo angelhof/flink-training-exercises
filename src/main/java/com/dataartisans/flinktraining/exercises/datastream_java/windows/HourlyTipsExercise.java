@@ -19,11 +19,25 @@ package com.dataartisans.flinktraining.exercises.datastream_java.windows;
 import com.dataartisans.flinktraining.exercises.datastream_java.datatypes.TaxiFare;
 import com.dataartisans.flinktraining.exercises.datastream_java.sources.TaxiFareSource;
 import com.dataartisans.flinktraining.exercises.datastream_java.utils.ExerciseBase;
-import com.dataartisans.flinktraining.exercises.datastream_java.utils.MissingSolutionException;
+// import com.dataartisans.flinktraining.exercises.datastream_java.utils.MissingSolutionException;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+
+// import org.apache.flink.streaming.api.datastream.KeyedStream;
+// import org.apache.flink.api.common.functions.MapFunction;
+// import org.apache.flink.api.common.functions.ReduceFunction;
+// import org.apache.flink.api.java.typeutils.TupleTypeInfo;
+// import org.apache.flink.api.common.typeinfo.TypeInformation;
+// import org.apache.flink.api.java.tuple.Tuple2;
+
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
+import org.apache.flink.util.Collector;
+import org.apache.flink.streaming.api.windowing.time.Time;
 
 /**
  * The "Hourly Tips" exercise of the Flink training
@@ -55,12 +69,83 @@ public class HourlyTipsExercise extends ExerciseBase {
 		// start the data generator
 		DataStream<TaxiFare> fares = env.addSource(fareSourceOrTest(new TaxiFareSource(input, maxEventDelay, servingSpeedFactor)));
 
-		throw new MissingSolutionException();
+		// We keep the driverId, the windowEnd, and the sum of tips for this driver
+		DataStream<Tuple3<Long, Long, Float>> totals = fares
+			// .map(new CleanUp())        // I cannot think of an easy way to put this after keyBy as then it becomes a singleoutput stream operator
+			// .keyBy(0)
+			.keyBy(fare -> fare.driverId)
+			// .map(fare -> fare.tip) // I cannot make this solution work. For some reason java doesn't like window after map
+			.window(TumblingEventTimeWindows.of(Time.hours(1)))
+			// .reduce(new SumTip(), new HourWindow());
+			.process(new HourWindow());
 
-//		printOrTest(hourlyMax);
+		// This seems to return a wrong result. While one would expect that it would return the correct result
+		// DataStream<Tuple3<Long, Long, Float>> hourlyMax = totals
+		// 	.keyBy(1)   // By the timestamp at the end of the window. Assume that all the windows have the exact same end timestamp
+		// 	.maxBy(2);  // Return the one with the highest tip
+
+		// Is this actually parallel (it says on the tutorial that window followed by windowall is not really parallel
+		DataStream<Tuple3<Long, Long, Float>> hourlyMax = totals
+			.timeWindowAll(Time.hours(1))   // By the timestamp at the end of the window. Assume that all the windows have the exact same end timestamp
+			.maxBy(2);                      // Return the one with the highest tip
+		
+		printOrTest(hourlyMax);
 
 		// execute the transformation pipeline
-//		env.execute("Hourly Tips (java)");
+		env.execute("Hourly Tips (java)");
 	}
 
+
+	private static class HourWindow
+		extends ProcessWindowFunction<TaxiFare, Tuple3<Long, Long, Float>, Long, TimeWindow> {
+		
+		@Override
+		public void process(Long key, Context context, Iterable<TaxiFare> fares, Collector<Tuple3<Long, Long, Float>> out) {
+
+			Float tipSum = new Float(0);
+			for (TaxiFare fare : fares) {
+				tipSum += fare.tip;
+			}
+			
+			// We assume that key == fare.driverId for all fares
+			// TODO: Can we assert that somehow and fail if it isn't?
+			out.collect(new Tuple3<Long, Long, Float>(context.window().getEnd(), key, tipSum));
+		}
+	}
+
+	
+	// I cannot make this solution work
+	//
+	// private static class CleanUp implements MapFunction<TaxiFare, Tuple2<Long, Float>> {
+
+	// 	@Override
+	// 	public Tuple2<Long, Float> map(TaxiFare fare) throws Exception {
+	// 		return new Tuple2(fare.driverId, fare.tip);
+	// 	}
+	// }
+	
+	// private static class SumTip implements ReduceFunction<Tuple2<Long, Float>> {
+	// 	public Tuple2<Long, Float> reduce(Tuple2<Long, Float> tip1, Tuple2<Long, Float> tip2) {
+	// 		// Since this is run in the keyed window, both driverIds should be the same.
+	// 		// TODO: Can we assert that somehow and fail if it isn't?
+	// 		return new Tuple2(tip1.f0, tip1.f1 + tip2.f1);
+	// 	}
+	// }
+	
+	// private static class HourWindow
+	// 	extends ProcessWindowFunction<Tuple2<Long, Float>, Tuple3<Long, Long, Float>, Long, TimeWindow> {
+		
+	// 	@Override
+	// 	public void process(Long key, Context context, Iterable<Tuple2<Long, Float>> sumTips, Collector<Tuple3<Long, Long, Float>> out) {
+			
+	// 		// This should only have one element (the aggregated sum)
+	// 		Tuple2<Long, Float> tipSum = sumTips.iterator().next();
+
+	// 		// We assume that key == tipSum.f0
+	// 		// TODO: Can we assert that somehow and fail if it isn't?
+	// 		out.collect(new Tuple3<Long, Long, Float>(key, context.window().getEnd(), tipSum.f1));
+	// 	}
+	// }
+
+	
 }
